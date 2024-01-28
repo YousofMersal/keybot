@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT key_val FROM keys WHERE claimed = FALSE LIMIT 1;\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "key_val",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "d3a61de7f79d6c53f66d2f13556cf6a8cc07cd89f80592aff5d6998efd816b6d"
+}

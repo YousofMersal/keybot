@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\nCREATE TABLE IF NOT EXISTS keys (\n    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,\n    key_val VARCHAR(255) NOT NULL,\n    claimed BOOLEAN DEFAULT FALSE NOT NULL,\n    user_claim VARCHAR(255),\n    claimed_at DATE,\n    added_at DATE DEFAULT (datetime('now', 'localtime')),\n    unique (key_val),\n    foreign key (user_claim) references users (id)\n);",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "1ad3e64358f1620337d6273377d06d4078c0a41aa6c44be7a7c0721edf6fb8f7"
+}
