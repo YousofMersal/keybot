@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use color_eyre::eyre::Result;
 use sqlx::{
     migrate::MigrateDatabase,
@@ -32,8 +34,10 @@ CREATE TABLE IF NOT EXISTS keys (
     user_claim VARCHAR(255),
     claimed_at DATE,
     added_at DATE DEFAULT (datetime('now', 'localtime')),
-    unique (key_val),
-    foreign key (user_claim) references users (id)
+    claim_round INTEGER,
+    UNIQUE (key_val),
+    FOREIGN KEY (user_claim) references users (id),
+    FOREIGN KEY (claim_round) REFERENCES giveaway_rounds (round_id)
 );"#
     )
     .execute(pool)
@@ -41,21 +45,31 @@ CREATE TABLE IF NOT EXISTS keys (
 
     sqlx::query!(
         r#"
-    CREATE TABLE IF NOT EXISTS config (
-        key VARCHAR(255) PRIMARY KEY NOT NULL,
-        value VARCHAR(255) NOT NULL
-    );"#
+CREATE TABLE IF NOT EXISTS config (
+    key VARCHAR(255) PRIMARY KEY NOT NULL,
+    value VARCHAR(255) NOT NULL
+);"#
     )
     .execute(pool)
     .await?;
 
     sqlx::query!(
         r#"
-    CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-        username VARCHAR(255) NOT NULL,
-        unique (username)
-    );"#
+CREATE TABLE IF NOT EXISTS giveaway_rounds (
+    round_id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    status VARCHAR(255) NOT NULL -- e.g., 'active', 'completed'
+);"#
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query!(
+        r#"
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    username VARCHAR(255) NOT NULL,
+    UNIQUE (username)
+);"#
     )
     .execute(pool)
     .await?;
@@ -83,6 +97,10 @@ pub async fn claim_key_with_user(pool: &Pool<Sqlite>, user: &str) -> Result<Stri
     .execute(pool)
     .await?;
 
+    // sqlx::query!(r#"
+    // SELECT
+    // "#);
+
     sqlx::query!(
         r#"
 UPDATE keys SET claimed = TRUE, user_claim = (select id from users where username = ?), claimed_at = datetime('now', 'localtime') WHERE key_val = ?;
@@ -107,6 +125,54 @@ pub async fn get_config_val(pool: &Pool<Sqlite>, key: &str) -> Result<String> {
     .await?;
 
     Ok(val.value)
+}
+
+pub async fn set_round(
+    pool: &Pool<Sqlite>,
+    round: i64,
+    config: &mut HashMap<String, String>,
+) -> Result<()> {
+    let mut transaction = pool.begin().await?;
+
+    sqlx::query!(
+        r#"
+        UPDATE giveaway_rounds SET status = 'completed' WHERE status = 'active';
+        "#
+    )
+    .execute(&mut *transaction)
+    .await?;
+
+    sqlx::query!(
+        r#"
+        INSERT OR REPLACE INTO giveaway_rounds (round_id, status) VALUES (?,'active');
+        "#,
+        round
+    )
+    .execute(&mut *transaction)
+    .await?;
+
+    if let Ok(_) = transaction.commit().await {
+        config.insert("claim_round".to_owned(), round.to_string());
+    } else {
+        return Err(color_eyre::eyre::eyre!("Failed to commit transaction"));
+    };
+
+    Ok(())
+}
+
+pub async fn get_round(pool: &Pool<Sqlite>) -> Result<Option<i64>> {
+    let round = sqlx::query!(
+        r#"
+        SELECT round_id FROM giveaway_rounds WHERE status = 'active';
+        "#
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    return match round {
+        Some(round) => Ok(Some(round.round_id)),
+        None => Ok(None),
+    };
 }
 
 pub async fn set_config_val(pool: &Pool<Sqlite>, key: &str, value: &str) -> Result<()> {

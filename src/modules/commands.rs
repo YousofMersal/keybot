@@ -10,7 +10,6 @@ use crate::{
 pub struct Data {
     db: sqlx::SqlitePool,
     args: Args,
-    #[allow(dead_code)]
     config: Mutex<HashMap<String, String>>,
 } // User data, which is stored and accessible in all command invocations
 
@@ -128,10 +127,10 @@ pub async fn create_key_post(
     };
 
     let reply = {
-        let embed = serenity::CreateEmbed::default().image("https://upload.wikimedia.org/wikipedia/commons/thumb/8/83/Steam_icon_logo.svg/512px-Steam_icon_logo.svg.png");
+        let embed = serenity::CreateEmbed::default().image("https://upload.wikimedia.org/wikipedia/commons/thumb/8/83/Steam_icon_logo.svg/512px-Steam_icon_logo.svg.png"); //TODO: make this an option
 
         let components = vec![serenity::CreateActionRow::Buttons(vec![
-            serenity::CreateButton::new("1")
+            serenity::CreateButton::new("get_key_comp")
                 .label("Get key")
                 .style(serenity::ButtonStyle::Primary),
         ])];
@@ -146,15 +145,15 @@ pub async fn create_key_post(
             .embed(embed)
             .components(components)
     };
+
     let res = ctx.send(reply).await?;
 
     while let Some(mci) = serenity::ComponentInteractionCollector::new(ctx)
-        .author_id(ctx.author().id)
         .channel_id(ctx.channel_id())
         .timeout(std::time::Duration::from_secs(
             duration.unwrap_or_else(|| ctx.data().args.duration_giveaway),
         ))
-        .filter(move |mci| mci.data.custom_id == "1")
+        .filter(move |mci| mci.data.custom_id == "get_key_comp")
         .await
     {
         // check if interaction uer has permission to claim a key

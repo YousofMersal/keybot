@@ -1,11 +1,12 @@
 mod modules;
 use modules::{
     commands::*,
-    db::{get_config_val, read_beta_keys_file},
+    db::{get_config_val, get_round, read_beta_keys_file, set_round},
     *,
 };
 use tokio::sync::Mutex;
 
+use config::Config;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use clap::Parser;
@@ -124,6 +125,13 @@ async fn main() {
         token
     };
 
+    let settings = Config::builder()
+        .add_source(config::File::with_name("config").format(config::FileFormat::Json5))
+        .build()
+        .expect("Config missing or invalid: config.json5")
+        .try_deserialize::<HashMap<String, String>>()
+        .expect("Could not serialize");
+
     let options = poise::FrameworkOptions {
         commands: vec![help(), give_key(), create_key_post(), set_key_role()],
         prefix_options: poise::PrefixFrameworkOptions {
@@ -149,22 +157,25 @@ async fn main() {
         config.insert(String::from("role_id"), value);
     };
 
+    // if get_round is OK, check if it's None, if it is, create a new round
+    if let Ok(None) = get_round(&pool).await {
+        set_round(&pool, 1, &mut config)
+            .await
+            .expect("Error setting round");
+    };
+
     let framework = poise::Framework::builder()
         .setup(move |ctx, _ready, framework| {
             Box::pin(async move {
                 println!("Logged in as {}", _ready.user.name);
 
-                poise::builtins::register_in_guild(
-                    ctx,
-                    &framework.options().commands,
-                    poise::serenity_prelude::GuildId::new(326330465218985985),
-                )
-                .await?;
+                poise::builtins::register_globally(ctx, &framework.options().commands).await?;
                 Ok(Data::new(pool.clone(), args, Mutex::new(config)))
             })
         })
         .options(options)
         .build();
+
     let mut client = Client::builder(&token, intents)
         .framework(framework)
         .await
