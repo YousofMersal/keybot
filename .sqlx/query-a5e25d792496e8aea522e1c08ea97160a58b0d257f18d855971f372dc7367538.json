@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\nCREATE TABLE IF NOT EXISTS keys (\n    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,\n    key_val VARCHAR(255) NOT NULL,\n    claimed BOOLEAN DEFAULT FALSE NOT NULL,\n    user_claim VARCHAR(255),\n    claimed_at DATE,\n    added_at DATE DEFAULT (datetime('now', 'localtime')),\n    claim_round INTEGER,\n    UNIQUE (key_val),\n    FOREIGN KEY (user_claim) references users (id),\n    FOREIGN KEY (claim_round) REFERENCES giveaway_rounds (round_id)\n);",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "a5e25d792496e8aea522e1c08ea97160a58b0d257f18d855971f372dc7367538"
+}

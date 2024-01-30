@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\nCREATE TABLE IF NOT EXISTS giveaway_rounds (\n    round_id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,\n    status VARCHAR(255) NOT NULL -- e.g., 'active', 'completed'\n);",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "790049e4677d78d274c0521995292f6b3422b43a4c349ee6f679b4b0ae6c4c08"
+}
