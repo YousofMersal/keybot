@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        UPDATE giveaway_rounds SET status = 'completed' WHERE status = 'active';\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "3642cb9c1eaa36f21f2ea93b00d87d2fa2b9ce2ad1e97a0c997a1c0467110e0b"
+}

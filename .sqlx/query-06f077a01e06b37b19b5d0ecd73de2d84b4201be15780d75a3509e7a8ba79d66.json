@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\nUPDATE keys SET claimed = TRUE, user_claim = (select id from users where username = ?), claimed_at = datetime('now', 'localtime'), claim_round = (select round_id from giveaway_rounds where status = 'active') WHERE key_val = ?;\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "06f077a01e06b37b19b5d0ecd73de2d84b4201be15780d75a3509e7a8ba79d66"
+}

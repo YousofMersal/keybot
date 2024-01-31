@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\nSELECT COUNT(*) AS unclaimed_keys_count\nFROM keys\nWHERE claimed = FALSE;",
+  "describe": {
+    "columns": [
+      {
+        "name": "unclaimed_keys_count",
+        "ordinal": 0,
+        "type_info": "Int"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "4d174037df7ba26c49253e01ae9c192c3cb3f220335772b53143de73d94fed45"
+}

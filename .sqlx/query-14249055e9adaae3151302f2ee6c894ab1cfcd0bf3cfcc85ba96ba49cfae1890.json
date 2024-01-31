@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\nSELECT k.key_val\nFROM keys k\nWHERE k.claimed = FALSE\nAND NOT EXISTS (\n    SELECT 1\n    FROM keys k2\n    INNER JOIN users u ON k2.user_claim = u.id\n    INNER JOIN giveaway_rounds gr ON k2.claim_round = gr.round_id\n    WHERE u.username = ?\n    AND k2.claimed = TRUE\n    AND gr.status = 'active'\n)\nLIMIT 1;",
+  "describe": {
+    "columns": [
+      {
+        "name": "key_val",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "14249055e9adaae3151302f2ee6c894ab1cfcd0bf3cfcc85ba96ba49cfae1890"
+}

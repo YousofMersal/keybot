@@ -77,16 +77,56 @@ CREATE TABLE IF NOT EXISTS users (
     Ok(())
 }
 
-// claims a key for a user and returns the key and marks the key as claimed
-pub async fn claim_key_with_user(pool: &Pool<Sqlite>, user: &str) -> Result<String> {
+pub async fn remaining_unclaimed(pool: &Pool<Sqlite>) -> Result<i32> {
+    let key = sqlx::query!(
+        r#"
+SELECT COUNT(*) AS unclaimed_keys_count
+FROM keys
+WHERE claimed = FALSE;"#
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(key.unclaimed_keys_count)
+}
+
+pub async fn give_key_unchecked(pool: &Pool<Sqlite>, user: &str) -> Result<String> {
+    let mut transaction = pool.begin().await?;
+
+    // add user to user table if they don't exist
+    sqlx::query!(
+        r#"
+        INSERT OR IGNORE INTO users (username) VALUES (?);
+        "#,
+        user
+    )
+    .execute(&mut *transaction)
+    .await?;
     let key = sqlx::query!(
         r#"
         SELECT key_val FROM keys WHERE claimed = FALSE LIMIT 1;
         "#
     )
-    .fetch_one(pool)
+    .fetch_one(&mut *transaction)
     .await?;
 
+    sqlx::query!(
+        r#"
+UPDATE keys SET claimed = TRUE, user_claim = (select id from users where username = ?), claimed_at = datetime('now', 'localtime'), claim_round = (select round_id from giveaway_rounds where status = 'active') WHERE key_val = ?;
+        "#,
+        user,
+        key.key_val
+    )
+    .execute(&mut *transaction)
+    .await?;
+
+    transaction.commit().await?;
+
+    Ok(key.key_val)
+}
+
+// claims a key for a user and returns the key and marks the key as claimed
+pub async fn claim_key_with_user(pool: &Pool<Sqlite>, user: &str) -> Result<String> {
     // add user to user table if they don't exist
     sqlx::query!(
         r#"
@@ -97,19 +137,49 @@ pub async fn claim_key_with_user(pool: &Pool<Sqlite>, user: &str) -> Result<Stri
     .execute(pool)
     .await?;
 
-    // sqlx::query!(r#"
-    // SELECT
-    // "#);
+    let mut transaction = pool.begin().await?;
+
+    let key_maybe = sqlx::query!(
+        r#"
+SELECT k.key_val
+FROM keys k
+WHERE k.claimed = FALSE
+AND NOT EXISTS (
+    SELECT 1
+    FROM keys k2
+    INNER JOIN users u ON k2.user_claim = u.id
+    INNER JOIN giveaway_rounds gr ON k2.claim_round = gr.round_id
+    WHERE u.username = ?
+    AND k2.claimed = TRUE
+    AND gr.status = 'active'
+)
+LIMIT 1;"#,
+        user
+    )
+    .fetch_optional(&mut *transaction)
+    .await?;
+
+    let Some(key) = key_maybe else {
+        if remaining_unclaimed(pool).await? > 0 {
+            return Err(color_eyre::eyre::eyre!(
+                "You have already claimed a key for this round."
+            ));
+        } else {
+            return Err(color_eyre::eyre::eyre!("No keys available"));
+        };
+    };
 
     sqlx::query!(
         r#"
-UPDATE keys SET claimed = TRUE, user_claim = (select id from users where username = ?), claimed_at = datetime('now', 'localtime') WHERE key_val = ?;
+UPDATE keys SET claimed = TRUE, user_claim = (select id from users where username = ?), claimed_at = datetime('now', 'localtime'), claim_round = (select round_id from giveaway_rounds where status = 'active') WHERE key_val = ?;
         "#,
         user,
         key.key_val
     )
-    .execute(pool)
+    .execute(&mut *transaction)
     .await?;
+
+    transaction.commit().await?;
 
     Ok(key.key_val)
 }
@@ -127,7 +197,7 @@ pub async fn get_config_val(pool: &Pool<Sqlite>, key: &str) -> Result<String> {
     Ok(val.value)
 }
 
-pub async fn set_round(
+pub async fn set_round_db(
     pool: &Pool<Sqlite>,
     round: i64,
     config: &mut HashMap<String, String>,

@@ -1,13 +1,13 @@
 mod modules;
 use modules::{
     commands::*,
-    db::{get_config_val, get_round, read_beta_keys_file, set_round},
+    db::{get_config_val, get_round, read_beta_keys_file, set_round_db},
     *,
 };
 use tokio::sync::Mutex;
 
 use config::Config;
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, io::Write, sync::Arc, time::Duration};
 
 use clap::Parser;
 use dotenv::dotenv;
@@ -44,7 +44,7 @@ struct Args {
     /// Giveaway duration in seconds
     #[arg(short, long)]
     #[clap(default_value = "3600")]
-    duration_giveaway: u64,
+    giveaway_duration: u64,
 }
 
 pub struct ShardManagerContainer;
@@ -125,15 +125,55 @@ async fn main() {
         token
     };
 
-    let settings = Config::builder()
+    let config_file = match Config::builder()
+        .set_default("age_bound", 5)
+        .expect("Could not set default age_bound")
+        .set_default("giveaway_duration", 3600)
+        .expect("Could not set default giveaway_duration")
         .add_source(config::File::with_name("config").format(config::FileFormat::Json5))
         .build()
-        .expect("Config missing or invalid: config.json5")
+    {
+        Ok(f) => f,
+        Err(e) => match e {
+            config::ConfigError::FileParse { uri, cause } => {
+                panic!("Error parsing config file: {:?} {}", uri, cause)
+            }
+            _ => {
+                let mut f =
+                    std::fs::File::create("config.json5").expect("Could not create config file");
+                f.write(
+                    br#"{
+  // Default key giveaway duration in seconds
+  // This can be overridden by the giveaway_duration argument
+  giveaway_duration: 3600,
+  // The age of the account required to claim a key
+  // given in days
+  age_bound: 5
+}"#,
+                )
+                .expect("Could not write default config file");
+
+                Config::builder()
+                    .add_source(config::File::with_name("config").format(config::FileFormat::Json5))
+                    .build()
+                    .expect("Could not build config file")
+            }
+        },
+    };
+
+    let mut config = config_file
         .try_deserialize::<HashMap<String, String>>()
         .expect("Could not serialize");
 
     let options = poise::FrameworkOptions {
-        commands: vec![help(), give_key(), create_key_post(), set_key_role()],
+        commands: vec![
+            help(),
+            give_key(),
+            create_key_post(),
+            set_key_role(),
+            give_key_unchecked(),
+            set_round(),
+        ],
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some("!".into()),
             edit_tracker: Some(Arc::new(poise::EditTracker::for_timespan(
@@ -151,15 +191,13 @@ async fn main() {
         | GatewayIntents::GUILD_MESSAGE_REACTIONS
         | GatewayIntents::DIRECT_MESSAGE_REACTIONS;
 
-    let mut config: HashMap<String, String> = std::collections::HashMap::new();
-
     if let Ok(value) = get_config_val(&pool, "role_id").await {
         config.insert(String::from("role_id"), value);
     };
 
     // if get_round is OK, check if it's None, if it is, create a new round
     if let Ok(None) = get_round(&pool).await {
-        set_round(&pool, 1, &mut config)
+        set_round_db(&pool, 1, &mut config)
             .await
             .expect("Error setting round");
     };

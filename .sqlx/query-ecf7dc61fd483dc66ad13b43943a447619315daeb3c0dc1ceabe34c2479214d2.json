@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT OR REPLACE INTO giveaway_rounds (round_id, status) VALUES (?,'active');\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "ecf7dc61fd483dc66ad13b43943a447619315daeb3c0dc1ceabe34c2479214d2"
+}

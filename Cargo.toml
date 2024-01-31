@@ -1,11 +1,12 @@
 [package]
 name = "keybot"
-version = "0.2.0"
+version = "0.3.1"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+chrono = "0.4.33"
 clap = { version = "4.4.18", features = ["derive", "color", "usage", "help", "suggestions"] }
 color-eyre = "0.6.2"
 config = { version = "0.13.4", features = ["json5_rs", "json5"], default-features = false }

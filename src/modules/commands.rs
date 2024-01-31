@@ -1,10 +1,11 @@
 use std::{collections::HashMap, str::FromStr};
 
+use chrono::{self};
 use poise::serenity_prelude as serenity;
 use tokio::sync::Mutex;
 
 use crate::{
-    db::{claim_key_with_user, set_config_val},
+    db::{claim_key_with_user, set_config_val, set_round_db},
     Args,
 };
 pub struct Data {
@@ -83,13 +84,19 @@ pub async fn give_key(
 ) -> Result<(), Error> {
     let key = claim_key_with_user(&ctx.data().db, &user.name).await;
 
+    if user.bot {
+        ctx.defer_ephemeral().await?;
+        ctx.say("You can't give a key to a bot!").await?;
+        return Ok(());
+    }
+
     if let Err(e) = key {
         ctx.defer_ephemeral().await?;
         ctx.say(format!(
             "Could not get key, please try again later\n\nError: {e}"
         ))
         .await?;
-        return Err(e.into());
+        return Ok(());
     }
 
     let msg = serenity::CreateMessage::new().content(String::from(format!(
@@ -107,6 +114,59 @@ Your key is: {}
     Ok(())
 }
 
+// Command to give a key to a user but dosn't check if the user has claimed a key before
+//
+// Works as a slash command and a context menu command
+// example invocation: `/give_key @user`
+// example invocation: Right click on username -> apps -> Give Key
+#[poise::command(
+    slash_command,
+    required_permissions = "ADMINISTRATOR",
+    context_menu_command = "Give Key unchecked"
+)]
+pub async fn give_key_unchecked(
+    ctx: Context<'_>,
+    #[description = "Give key to this user, key is sent as a DM to the user"]
+    #[autocomplete = "poise::builtins::autocomplete_command"]
+    user: serenity::User,
+) -> Result<(), Error> {
+    let key = crate::db::give_key_unchecked(&ctx.data().db, &user.name).await;
+
+    if let Err(e) = key {
+        ctx.defer_ephemeral().await?;
+        ctx.say(format!(
+            "Could not get key, please try again later\n\nError: {e}"
+        ))
+        .await?;
+        return Ok(());
+    }
+
+    let msg = serenity::CreateMessage::new().content(String::from(format!(
+        r#"Congratulations, you have been given a key!
+You can claim your key by entering it into steam.
+Your key is: {}
+"#,
+        key.expect("Could not get key, this options should be unreachable, please contact Yousof if you see this message")
+    )));
+    user.direct_message(&ctx, msg).await?;
+
+    ctx.defer_ephemeral().await?;
+    ctx.say(format!("Key sent to {}", user.name)).await?;
+
+    Ok(())
+}
+
+#[poise::command(slash_command, required_permissions = "ADMINISTRATOR", ephemeral)]
+pub async fn set_round(ctx: Context<'_>, round: i64) -> Result<(), Error> {
+    let mut conf = ctx.data().config.lock().await;
+
+    set_round_db(&ctx.data().db, round, &mut conf).await?;
+
+    ctx.say(format!("Round set to {}", round)).await?;
+
+    Ok(())
+}
+
 #[poise::command(slash_command, required_permissions = "ADMINISTRATOR", track_edits)]
 pub async fn create_key_post(
     ctx: Context<'_>,
@@ -115,8 +175,8 @@ pub async fn create_key_post(
     >,
     message: Option<String>,
 ) -> Result<(), Error> {
-    let data = ctx.data().config.lock().await;
-    let role = data.get("role_id");
+    let data_map = ctx.data().config.lock().await;
+    let role = data_map.get("role_id");
 
     let role = if let Some(role) = role {
         role
@@ -151,7 +211,7 @@ pub async fn create_key_post(
     while let Some(mci) = serenity::ComponentInteractionCollector::new(ctx)
         .channel_id(ctx.channel_id())
         .timeout(std::time::Duration::from_secs(
-            duration.unwrap_or_else(|| ctx.data().args.duration_giveaway),
+            duration.unwrap_or_else(|| ctx.data().args.giveaway_duration),
         ))
         .filter(move |mci| mci.data.custom_id == "get_key_comp")
         .await
@@ -166,27 +226,52 @@ pub async fn create_key_post(
                 serenity::RoleId::from_str(role).expect("Could not parse role id"),
             )
             .await?;
+        let now = chrono::Utc::now().naive_utc();
+        let age = mci.user.created_at().naive_utc();
+        let min_age = data_map
+            .get("age_bound")
+            .expect("Could not get age bound")
+            .parse::<i64>()
+            .expect("Age could not be parsed as a number");
+        let is_old = now.signed_duration_since(age).num_days() > min_age;
+
+        if !is_old {
+            mci.user
+                .direct_message(
+                    &ctx,
+                    serenity::CreateMessage::new()
+                        .content(format!("Your account is too new to claim a key. Your account must be at least {} days old", min_age)),
+                )
+                .await?;
+
+            mci.create_response(ctx, serenity::CreateInteractionResponse::Acknowledge)
+                .await?;
+
+            return Ok(());
+        }
 
         if has_role {
             let key = claim_key_with_user(&ctx.data().db, &mci.user.name).await;
 
             if let Err(e) = key {
                 ctx.defer_ephemeral().await?;
-                ctx.say(format!(
-                    "Could not get key, please try again later\n\nError: {e}"
-                ))
-                .await?;
-                return Err(e.into());
-            }
-
-            let msg = serenity::CreateMessage::new().content(String::from(format!(
+                mci.user
+                    .direct_message(
+                        ctx,
+                        serenity::CreateMessage::new()
+                            .content(format!("Could not claim key\nreason: {e}")),
+                    )
+                    .await?;
+            } else {
+                let msg = serenity::CreateMessage::new().content(String::from(format!(
         r#"Congratulations, you have been given a key!
 You can claim your key by entering it into steam.
 Your key is: {}
 "#,
         key.expect("Could not get key, this options should be unreachable, please contact Yousof if you see this message")
     )));
-            mci.user.direct_message(&ctx, msg).await?;
+                mci.user.direct_message(&ctx, msg).await?;
+            }
         } else {
             mci.user
                 .direct_message(
